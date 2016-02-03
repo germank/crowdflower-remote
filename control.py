@@ -9,14 +9,18 @@ logger = logging.getLogger('')
 
 
 api_key = None
+dry_run = False
 def main():
+    global api_key,dry_run
     ap = argparse.ArgumentParser()
     ap.add_argument('-j', '--job-id', type=int)
     ap.add_argument('-k', '--api-key', required=True)
+    ap.add_argument('-d', '--dry-run', action='store_true', default=False)
     ap.add_argument('command')
 
     args = ap.parse_args()
     api_key = args.api_key
+    dry_run = args.dry_run
 
     if args.command == 'cancel-guessed': 
         assert(args.job_id)
@@ -28,22 +32,25 @@ def main():
 
 def cancel_guessed(job_id):
     for unit_id, item in get_all_units(job_id).iteritems():
-            if unit_guessed(item):
-                res = cancel_unit(job_id, item_id)
-                logger.info(res)
+            if item['_state'] == 'judgable':
+                if unit_guessed(item):
+                    res = cancel_unit(job_id, item['_ids'])
+                    logger.info(res)
 
 def cancel_non_guessed(job_id):
     for unit_id, item in get_all_units(job_id).iteritems():
-            for judgment in get_all_judgments(job_id, unit_id):
-                if not judgment_guessed(judgment):
-                    res = cancel_unit(job_id, unit_id)
-                    logger.info(res)
+            if item['_state'] == 'judgable':
+                for judgment in get_all_judgments(job_id, unit_id):
+                    if not judgment_guessed(judgment):
+                        res = cancel_unit(job_id, unit_id)
+                        logger.info(res)
 
 def reject_contributor(job_id, worker_id):
     url = "https://api.crowdflower.com/v1/jobs/{job_id}/workers/{worker_id}/reject.json"
     url = url.format(job_id=job_id, worker_id=worker_id)
 
-    return call(url, 'put', {"key": api_key, "reject": "You are out!"})
+    if not dry_run:
+        return call(url, 'put', {"key": api_key, "reject": "You are out!"})
 
 def get_all_units(job_id):
     url = "https://api.crowdflower.com/v1/jobs/{job_id}/judgments.json"
@@ -70,7 +77,8 @@ def cancel_unit(job_id, unit_id):
     #url = "https://api.crowdflower.com/v1/jobs/{job_id}/units/{unit_id}.json"
     url = url.format(job_id=job_id, unit_id=unit_id)
     #return call(url, 'put', {"key":api_key, 'unit[state]': 'canceled'})
-    return call(url, 'post', {"key": api_key})
+    if not dry_run: 
+        return call(url, 'post', {"key": api_key})
 
 def unit_guessed(item):
     return item['answer'].lower() in map(lambda x: x.lower() if x else x,
@@ -85,6 +93,8 @@ def call(api_call,method, params):
     headers = {'content-type': 'application/json'}
     ret = requests.request(method, api_call, data=json.dumps(params),
     headers=headers)
+    if ret.status_code != requests.codes.ok:
+        logger.error(ret.text)
     return json.loads(ret.text)
 
 
