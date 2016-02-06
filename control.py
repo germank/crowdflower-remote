@@ -34,7 +34,7 @@ def cancel_guessed(job_id):
     for unit_id, item in get_all_units(job_id).iteritems():
             if item['_state'] == 'judgable':
                 if unit_guessed(item):
-                    res = cancel_unit(job_id, item['_ids'])
+                    res = cancel_unit(job_id, unit_id)
                     logger.info(res)
 
 def cancel_non_guessed(job_id):
